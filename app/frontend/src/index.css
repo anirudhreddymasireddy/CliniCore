@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@theme {
+  --color-critical: #F65353;
+  --color-medium: #FFA511;
+  --color-normal: #7EC636;
+  --color-bg: #0a0f1c;
+  --color-panel: #121a2b;
+  --color-panel-2: #18223a;
+  --color-line: #27324d;
+  --color-ink: #0b0f19;
+  --color-text: #eef2fa;
+  --color-muted: #a6b2c8;
+  --color-mon-hr: #3dff7a;
+  --color-mon-spo2: #33e1ff;
+  --color-mon-bp: #ff4d5e;
+  --color-mon-rr: #ffe14d;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html { font-size: 18px; }
+@media (min-width: 1800px) { html { font-size: 20px; } }
+body { background: var(--color-bg); color: var(--color-text); font-family: var(--font-sans); margin: 0; }
+button { touch-action: manipulation; }
+:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+
+/* calm, smooth motion; respects reduced-motion */
+@keyframes slide-in { from { transform: translateX(110%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes fade-up { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes soft-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(246, 83, 83, 0.0); } 50% { box-shadow: 0 0 0 6px rgba(246, 83, 83, 0.18); } }
+.anim-slide-in { animation: slide-in 520ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.anim-fade-up { animation: fade-up 380ms ease-out both; }
+.anim-soft-pulse { animation: soft-pulse 2.8s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .anim-slide-in, .anim-fade-up, .anim-soft-pulse { animation: none; }
+}

@@ -1,0 +1,13 @@
+numpy>=2.0
+pandas>=2.2
+scikit-learn>=1.5
+lightgbm>=4.3
+scipy>=1.12
+joblib>=1.3
+fastapi>=0.110
+uvicorn>=0.29
+httpx>=0.27
+pyexasol>=0.26
+kagglehub>=0.3
+matplotlib>=3.8
+pytest>=8.0

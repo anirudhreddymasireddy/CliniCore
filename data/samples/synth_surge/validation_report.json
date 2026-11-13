@@ -1,0 +1,139 @@
+{
+ "data": "samples/synth_surge",
+ "schema": {
+  "missing_tables": [],
+  "missing_columns": {},
+  "optional_present": [
+   "diagnosis",
+   "medrecon",
+   "pyxis",
+   "prescriptions",
+   "microbiologyevents",
+   "transfers",
+   "diagnoses_icd"
+  ]
+ },
+ "integrity": {
+  "icu_stays": 208,
+  "admissions": 580,
+  "ed_stays": 700,
+  "icu_hadm_not_in_admissions": 0,
+  "chart_stay_not_in_icustays": 0,
+  "icu_stays_without_chartevents": 7,
+  "duplicate_stay_id": 0,
+  "icu_outtime_before_intime": 0,
+  "chartevents_bad_charttime": 0,
+  "chartevents_exact_duplicates": 480,
+  "chartevents_storetime_before_charttime": 54486,
+  "chartevents_outside_icu_window": 1388
+ },
+ "scoring": {
+  "panel_rows": 20236,
+  "stays": 208,
+  "qc_values_set_to_nan": {
+   "hr": 43,
+   "rr": 13,
+   "spo2": 25,
+   "map": 37,
+   "temp_c": 6,
+   "alt": 1
+  },
+  "news2_band_share": {
+   "low": 0.511,
+   "high": 0.22,
+   "low_medium": 0.156,
+   "medium": 0.066,
+   "unknown": 0.047
+  },
+  "sofa_stay_max": {
+   "count": 208.0,
+   "mean": 6.02,
+   "std": 3.58,
+   "min": 0.0,
+   "25%": 3.0,
+   "50%": 5.0,
+   "75%": 8.0,
+   "max": 17.0
+  },
+  "sofa_component_nan_share": {
+   "sofa_resp": 0.053,
+   "sofa_coag": 0.0,
+   "sofa_liver": 0.226,
+   "sofa_cv": 0.042,
+   "sofa_cns": 0.06,
+   "sofa_renal": 0.0
+  },
+  "measured_share": {
+   "hr": 0.88,
+   "map": 0.91,
+   "gcs": 0.197,
+   "creatinine": 0.131,
+   "lactate": 0.106
+  },
+  "qsofa_pos_share": 0.144,
+  "sirs_pos_share": 0.248,
+  "suspected_infection_stays": 76,
+  "sepsis3_stays": 65,
+  "label_6h_positive_rate": 0.014,
+  "triage_news2_missing_share": 0.0
+ },
+ "truth": {
+  "sepsis_tp": 60,
+  "sepsis_fn": 0,
+  "sepsis_fp": 5,
+  "sepsis_tn": 143,
+  "onset_error_h_median": -2.16,
+  "onset_within_6h": 0.75,
+  "archetype_counts": {
+   "stable_postop": 33,
+   "resp_failure": 31,
+   "cardiogenic_cvicu": 20,
+   "sepsis_in_icu": 20,
+   "septic_shock": 14,
+   "sepsis_floor_to_icu": 14,
+   "neuro_icu": 14,
+   "very_long_stay": 10,
+   "sirs_no_infection": 10,
+   "dka_metabolic": 9,
+   "hemorrhagic": 9,
+   "aki_nephrotoxic": 7,
+   "liver_failure": 7,
+   "infection_no_sepsis": 6,
+   "atypical_sepsis": 2,
+   "early_death_short": 2
+  },
+  "planted_edge_cases": {
+   "lab_string_value_no_valuenum": 88,
+   "hr_zero_artifact": 43,
+   "spo2_29_spike": 25,
+   "abp_mean_801_artifact": 22,
+   "pre_icu_charttime": 17,
+   "duplicate_chartevents_rows": 16,
+   "negative_map": 15,
+   "sepsis_present_on_admission": 14,
+   "lactate_never_measured": 14,
+   "rr_88_spike": 13,
+   "mixed_temp_units": 10,
+   "very_long_stay_gt20d": 10,
+   "sirs_without_infection": 10,
+   "no_chartevents_at_all": 7,
+   "infection_without_organ_dysfunction": 6,
+   "temp_c_99_sentinel": 6,
+   "phenylephrine_only_post_induction": 5,
+   "antibiotic_before_culture": 5,
+   "culture_negative_but_treated": 3,
+   "atypical_sepsis_afebrile_no_tachycardia": 2,
+   "beta_blocker_masks_tachycardia": 2,
+   "short_stay_death_lt12h": 2
+  },
+  "qc_caught": {
+   "hr": 43,
+   "rr": 13,
+   "spo2": 25,
+   "map": 37,
+   "temp_c": 6,
+   "alt": 1
+  }
+ },
+ "ok": true
+}

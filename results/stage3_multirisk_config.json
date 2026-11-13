@@ -1,0 +1,47 @@
+{
+  "thresholds": {
+    "sepsis": 0.1461955390634788,
+    "arf": 0.2603563830659646,
+    "aki": 0.34544581054789847,
+    "shock": 0.08366662740286024
+  },
+  "criticality": {
+    "severity_by_tier": [
+      0.0,
+      0.15,
+      0.45,
+      0.8
+    ],
+    "model_flag_bump": 0.1,
+    "level_cuts": [
+      15,
+      40,
+      70
+    ]
+  },
+  "horizon_h": {
+    "sepsis": 6,
+    "arf": 6,
+    "aki": 12,
+    "shock": 6
+  },
+  "history_features": [
+    "age",
+    "male",
+    "adm_emergency",
+    "h_admit_to_icu",
+    "icu_micu",
+    "icu_cardiac",
+    "prior_admissions",
+    "hx_htn",
+    "hx_dm",
+    "hx_hf",
+    "hx_cad",
+    "hx_af",
+    "hx_copd",
+    "hx_ckd",
+    "hx_liver",
+    "hx_cancer"
+  ],
+  "weight_assumed_kg": 70.0
+}

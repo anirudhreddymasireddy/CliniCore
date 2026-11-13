@@ -1,0 +1,9 @@
+set,risk,standard,horizon_h,rows,events,prevalence,auroc,auprc,auroc_current_tier,auroc_qsofa,auroc_news2,auroc_cr_ratio,auroc_shock_index
+A_validation,sepsis,SIRS / qSOFA / SOFA,6,3630,75,0.0207,0.89,0.4075,0.596,0.574,,,
+B_shifted_hospital,sepsis,SIRS / qSOFA / SOFA,6,14514,285,0.0196,0.882,0.3865,0.579,0.503,,,
+A_validation,arf,ROX index / P-F / NEWS2,6,3463,49,0.0141,0.861,0.1763,0.628,,0.73,,
+B_shifted_hospital,arf,ROX index / P-F / NEWS2,6,13800,359,0.026,0.869,0.3243,0.66,,0.784,,
+A_validation,aki,KDIGO,12,3216,110,0.0342,0.865,0.2332,0.636,,,0.569,
+B_shifted_hospital,aki,KDIGO,12,12269,877,0.0715,0.902,0.3868,0.729,,,0.698,
+A_validation,shock,SCAI-style stage / shock index,6,3586,58,0.0162,0.745,0.0746,0.495,,,,0.801
+B_shifted_hospital,shock,SCAI-style stage / shock index,6,14000,401,0.0286,0.884,0.2527,0.535,,,,0.859

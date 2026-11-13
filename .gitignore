@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+# runtime state written by the app and the retrain watcher
+app_state/
+state/
+app/feedback_log.csv
+.run/
+# large or licensed data: never commit (see docs/data.md)
+sepsis2019_cache/
+nhamcs_raw/
+mimic_cache/
+*mimic*/
+exasol_export/
+*.psv
+*.dta
+# generated per run
+results/stage3_physionet_ids.json
+models/stage1_nhamcs_v*.joblib
+models/stage3_v*.joblib
+models/grud_*.pt
+# front-end build tools (the built app in app/frontend/dist IS committed)
+app/frontend/node_modules/
+# misc
+*.zip
+.env
+.DS_Store

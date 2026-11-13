@@ -1,0 +1,55 @@
+{
+  "_comment": "Presentation-mode patients, chosen with backend/pick_demo.py on 2026-11-13. Tokens are anonymized: first 12 hex of HASH_MD5('carepriority-' || STAY_ID); no raw identifiers are stored.",
+  "critical": {
+    "token": "9d4ab97e1be2",
+    "alert_hour": 22,
+    "bed": 4,
+    "why": "CRITICAL shock alert that fires right after a NORMAL hour. In the 6 h before it, the real 5-minute arterial MAP drifts from about 74 to 61 mmHg while HR climbs from about 77 to 99 bpm (complete 5-minute data, no artifact values, largest step 10 mmHg / 4 bpm). Alert text names 2 abnormal drivers (MAP 61 mmHg, GCS 9) plus recently ordered blood gas and lactate."
+  },
+  "medium": {
+    "token": "7fc4ab0aa626",
+    "alert_hour": 71,
+    "bed": 7,
+    "why": "MEDIUM respiratory alert after 6 NORMAL hours. In the 6 h before it the 5-minute respiratory rate climbs by about 6 /min to 28 /min while SpO2 drifts slightly down; no artifact values. Alert text: RR 28 /min (+3 in 3 h), hemoglobin 7.4 g/dL, recently ordered renal panel and electrolytes."
+  },
+  "calm_beds": [
+    {
+      "token": "932fbbc41ea4",
+      "display_hour": 24,
+      "bed": 1
+    },
+    {
+      "token": "e999fd9a49c3",
+      "display_hour": 24,
+      "bed": 2
+    },
+    {
+      "token": "179905e19cc0",
+      "display_hour": 24,
+      "bed": 3
+    },
+    {
+      "token": "27c17cccb0d3",
+      "display_hour": 24,
+      "bed": 5
+    },
+    {
+      "token": "da0f79bd467f",
+      "display_hour": 24,
+      "bed": 6
+    },
+    {
+      "token": "eb3ff1a241eb",
+      "display_hour": 24,
+      "bed": 8
+    },
+    {
+      "token": "3cfe24b73e33",
+      "display_hour": 24,
+      "bed": 9
+    }
+  ],
+  "calm_bed_rule": "eICU stays NORMAL in every hour 18-24, MODIFIED_NEWS2 <= 3 at hour 24, >= 70 five-minute HR values and no artifact values in hours 18-24; first 7 by HASH_MD5('calm-' || STAY_ID).",
+  "trigger_delay_seconds": 2,
+  "ward_name": "ICU · Station 3 (demo)"
+}
