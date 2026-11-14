@@ -39,6 +39,7 @@ CliniCore supports hospital staff from the emergency-department (ED) front door 
 | Tested on | 11,607 visits from 2022 (later year, never trained on) | Hospital B (a different hospital system, never trained on) |
 | Key result | 59.0 % accuracy (baseline 17 %), top-3 82.8 %; when it answers alone it is right 83.5 % | AUROC sepsis 0.75–0.80, breathing 0.84, kidney 0.91, shock 0.94; beats qSOFA and NEWS2 on the same patients |
 | Human in the loop | Unsure (77 %) → doctor queue; 50 labels → retrain behind a safety gate | False alarm needs a reason; 50 reasons → retrain behind a safety gate |
+| Cost and speed | 3.6 ms per case on a laptop CPU, ≈ $0 to run | 3.6 ms per bed (4 risks), ≈ $0 to run; an LLM would take seconds and $46–$4,600 a year per hospital (section 9) |
 
 Neural networks were tried at both stages (an MLP 64 → 32 for Stage 1, GRU-D for Stage 3). Both were worse on our real data than the simpler models, so the final system uses the simpler, calibrated, readable models.
 
@@ -329,6 +330,33 @@ None of these are head-to-head (different patients, splits and sepsis definition
 - **Stage 1:** no public benchmark exists for diagnosis groups from triage data; we compare against the majority baseline (17 %).
 
 **What we claim:** an open, explainable pipeline, tested on a later year and on a new hospital, in the same range as published challenge entries, better than bedside scores on the same patients, with a fixed alert budget and a built-in loop for learning from staff. **What we do not claim:** beating the challenge winners, or clinical validation.
+
+### Cost, compute and speed vs large language models
+
+Could a large language model (LLM) do these jobs instead? We compared running costs for one hospital for one year: 150 ED visits a day (54,750 cases) and 20 ICU beds checked every hour (175,200 checks).
+
+![Cost and speed vs LLMs](img/cost_comparison.png)
+
+| | CliniCore | Small LLM (Claude Haiku 5.5 / GPT-6 Luna) | Mid LLM (Claude Sonnet 5.5 / GPT-6 Sol) | Large LLM (Claude Opus 5.5 · Fable 5.2 · GPT-6 Astra) |
+|---|---|---|---|---|
+| Price per 1M tokens (in / out) | – | $0.10 / $0.50 | $2 / $10 | $4 / $20 · $8 / $40 · $10 / $50 |
+| Cost per ED case | ≈ $0 | $0.0001 | $0.0021 | $0.0042 – $0.0105 |
+| Cost per ICU check | ≈ $0 | $0.0002 | $0.0046 | $0.0092 – $0.0230 |
+| **Cost per year, one hospital** | **< $0.01** (laptop electricity) | $46 | $921 | $1,842 – $4,604 |
+| Time per prediction | **3.6 ms** (measured, 2-core CPU) | ≈ 2.5 s (ED) to 4.3 s (ICU) | same | same |
+| Compute per prediction | ≤ 0.6 million operations | ≈ 60 trillion FLOPs for a 70-billion-parameter open model (about 100 million times more) | | |
+| Where patient data goes | stays on the hospital machine | sent to an external API (or GPUs to host one yourself: about two 80 GB GPUs for a 70B model) | | |
+| Probabilities usable for routing | yes, calibrated (ECE 0.022) | not by default (text answers; would need calibration) | | |
+| Same input → same output | yes | not guaranteed | | |
+| Learns from 50 doctor labels | yes, retrains in minutes behind a gate | not directly (needs prompt changes or fine-tuning) | | |
+
+Assumptions: about 300 input + 150 output tokens per ED case and 800 + 300 per ICU check (24 hours of hourly values), standard list prices without batch or caching discounts, LLM speed 0.67 s to first token plus 83 tokens/s (a public API example). Everything is in `scripts/cost_comparison.py`; change the assumptions there and rerun.
+
+**What this shows honestly:**
+
+- Money is not the main argument for one hospital: even the largest LLMs cost a few thousand dollars a year at this volume, and the smallest about $46. The gap grows with longer patient histories, more beds, more hospitals and reasoning models that bill extra output.
+- The strong arguments are **speed** (milliseconds vs seconds, about 1,000× faster, so the whole ICU board refreshes instantly), **compute** (about 100 million times less, runs on any laptop with no GPU and no internet), **data protection** (patient data never leaves the hospital, which matters under GDPR), **calibrated probabilities** (the "is the model sure?" routing depends on them), **reproducibility** and **learning from staff** in minutes.
+- We did **not** test LLM accuracy on these tasks, so this is a cost and operations comparison, not a quality ranking. An LLM could add value on top of CliniCore, for example drafting the free-text part of the doctor message, where its cost per call would be small.
 
 ---
 

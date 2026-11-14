@@ -95,6 +95,12 @@ None of these are head-to-head (different patients, splits and sepsis definition
 
 What we claim: an open, externally tested, explainable pipeline in the same range as published challenge entries, tested across hospitals (the step where the winner and the commercial model both dropped), with a fixed alert budget, and a built-in loop for learning from staff corrections. What we do **not** claim: beating the challenge winners or being validated for clinical use.
 
+### Cost and speed vs large language models
+
+![Cost and speed vs LLMs](docs/img/cost_comparison.png)
+
+For one hospital (150 ED visits a day, 20 ICU beds checked hourly), CliniCore answers in about 3.6 ms on a laptop CPU at essentially zero running cost, with patient data staying in the hospital. Asking an LLM API would take about 2.5–4.3 s per answer and cost $46 a year (smallest models) to $4,600 a year (largest), with about 100 million times more compute per prediction. LLM accuracy was not tested; details and assumptions in the [technical report](docs/technical-report.md) and `scripts/cost_comparison.py`.
+
 ## Quick start (Windows, ~5 minutes)
 
 Requirements: Python 3.11+ (tested on 3.14). Node.js is **not** needed; the web app is pre-built.
