@@ -29,8 +29,10 @@ def ddl(df, table, wide_text=False):
 
 def main(folder, schema):
     import pyexasol                      # imported here so ddl() can be used (and tested) without the driver
-    con = pyexasol.connect(dsn=os.environ.get("EXA_DSN", "127.0.0.1:8563"), user=os.environ.get("EXA_USER", "sys"),
-                           password=os.environ["EXA_PASS"], encryption=True, websocket_sslopt={"cert_reqs": ssl.CERT_NONE})
+    dsn = os.environ.get("EXA_DSN", "127.0.0.1:8563")
+    local = dsn.split(":")[0] in ("127.0.0.1", "localhost") or os.environ.get("EXA_INSECURE") == "1"
+    con = pyexasol.connect(dsn=dsn, user=os.environ.get("EXA_USER", "sys"), password=os.environ["EXA_PASS"], encryption=True,
+                           websocket_sslopt={"cert_reqs": ssl.CERT_NONE if local else ssl.CERT_REQUIRED})
     con.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
     con.execute(f'OPEN SCHEMA "{schema}"')
     files = sorted(glob.glob(os.path.join(folder, "**", "*.csv*"), recursive=True))

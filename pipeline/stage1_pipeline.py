@@ -32,14 +32,21 @@ MODEL_KIND = "logreg"             # set by --model: logreg | mlp   (mlp = 2 ReLU
 
 
 # ---------------------------------------------------------------- data access
+def _sslopt(dsn):
+    """Local Exasol Personal uses a self-signed certificate; remote hosts (Exasol SaaS) are verified unless EXA_INSECURE=1."""
+    local = dsn.split(":")[0] in ("127.0.0.1", "localhost") or os.environ.get("EXA_INSECURE") == "1"
+    return {"cert_reqs": ssl.CERT_NONE} if local else {"cert_reqs": ssl.CERT_REQUIRED}
+
+
 class Source:
     def __init__(self, kind, where):
         self.kind, self.where, self.con = kind, where, None
         if kind == "exasol":
             import pyexasol
             pw = os.environ.get("EXA_PASS") or open(os.path.expanduser("~/.exasol-starter-kit/credentials/personal_sys_password")).read().strip()
-            self.con = pyexasol.connect(dsn=os.environ.get("EXA_DSN", "127.0.0.1:8563"), user=os.environ.get("EXA_USER", "sys"), password=pw,
-                                        encryption=True, websocket_sslopt={"cert_reqs": ssl.CERT_NONE})
+            dsn = os.environ.get("EXA_DSN", "127.0.0.1:8563")
+            self.con = pyexasol.connect(dsn=dsn, user=os.environ.get("EXA_USER", "sys"), password=pw,
+                                        encryption=True, websocket_sslopt=_sslopt(dsn))
 
     def read(self, table):
         if self.kind == "exasol":
