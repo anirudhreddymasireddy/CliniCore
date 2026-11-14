@@ -17,9 +17,10 @@ RESERVED = {"LEVEL", "ACTION", "STATUS", "AUTO", "MESSAGE"}
 
 
 class Res:
-    def __init__(self, rows): self.rows = rows
+    def __init__(self, rows, cols=None): self.rows, self.cols = rows, cols or {}
     def fetchone(self): return self.rows[0]
     def fetchall(self): return self.rows
+    def columns(self): return self.cols
 
 
 class FakeExasol:
@@ -40,6 +41,16 @@ class FakeExasol:
             q = " ".join(q.split())
             if m := re.match(r'CREATE SCHEMA IF NOT EXISTS "(\w+)"', q): return Res([(0,)])
             if m := re.match(r'OPEN SCHEMA "(\w+)"', q): self.schema = m.group(1); return Res([(0,)])
+            if m := re.fullmatch(r'SELECT \* FROM "(\w+)"\."(\w+)"', q):          # small reads over the session (like pyexasol: DECIMAL as text)
+                key = (m.group(1), m.group(2))
+                if key not in self.tables:
+                    raise RuntimeError(f"object {key} not found")
+                df = self.tables[key]
+                cols = {c: {"type": "DOUBLE" if t_.startswith("DOUBLE") else ("DECIMAL" if t_ == "BIGINT" else "VARCHAR")} for c, t_ in self.types[key].items()}
+                rows = [tuple(None if pd.isna(v) else (str(v) if cols[c]["type"] == "DECIMAL" else v) for c, v in zip(df.columns, r)) for r in df.itertuples(index=False)]
+                return Res(rows, cols)
+            if m := re.fullmatch(r"SELECT TABLE_NAME FROM EXA_ALL_TABLES WHERE TABLE_SCHEMA='(\w+)'", q):
+                return Res([(t,) for (s_, t) in self.tables if s_ == m.group(1)])
             if m := re.search(r"EXA_ALL_TABLES WHERE TABLE_SCHEMA='(\w+)' AND TABLE_NAME='(\w+)'", q):
                 return Res([(int((m.group(1), m.group(2)) in self.tables),)])
             if m := re.search(r"EXA_ALL_COLUMNS WHERE COLUMN_SCHEMA='(\w+)' AND COLUMN_TABLE='(\w+)'", q):

@@ -5,22 +5,22 @@
    "n": 10513,
    "accuracy": 0.603,
    "top3_accuracy": 0.844,
-   "auto_share": 0.242,
-   "auto_accuracy": 0.836,
-   "doctor_share": 0.758,
-   "wrong_shown_to_patient_pct": 3.98,
-   "accuracy_when_sent_to_doctor": 0.529,
-   "ece": 0.026
+   "auto_share": 0.241,
+   "auto_accuracy": 0.837,
+   "doctor_share": 0.759,
+   "wrong_shown_to_patient_pct": 3.93,
+   "accuracy_when_sent_to_doctor": 0.528,
+   "ece": 0.025
   },
   "test_2022": {
    "n": 11607,
-   "accuracy": 0.59,
+   "accuracy": 0.589,
    "top3_accuracy": 0.828,
-   "auto_share": 0.231,
+   "auto_share": 0.229,
    "auto_accuracy": 0.835,
-   "doctor_share": 0.769,
-   "wrong_shown_to_patient_pct": 3.82,
-   "accuracy_when_sent_to_doctor": 0.517,
+   "doctor_share": 0.771,
+   "wrong_shown_to_patient_pct": 3.77,
+   "accuracy_when_sent_to_doctor": 0.516,
    "ece": 0.022
   }
  },
@@ -28,47 +28,47 @@
  "policy_sweep": [
   {
    "tau": 0.5,
-   "auto_share_validation": 0.657,
+   "auto_share_validation": 0.656,
    "auto_accuracy_validation": 0.715,
-   "auto_share_test_2022": 0.646,
-   "auto_accuracy_test_2022": 0.71
+   "auto_share_test_2022": 0.645,
+   "auto_accuracy_test_2022": 0.711
   },
   {
    "tau": 0.6,
-   "auto_share_validation": 0.537,
-   "auto_accuracy_validation": 0.755,
+   "auto_share_validation": 0.536,
+   "auto_accuracy_validation": 0.757,
    "auto_share_test_2022": 0.528,
    "auto_accuracy_test_2022": 0.746
   },
   {
    "tau": 0.7,
-   "auto_share_validation": 0.399,
-   "auto_accuracy_validation": 0.792,
-   "auto_share_test_2022": 0.386,
-   "auto_accuracy_test_2022": 0.786
+   "auto_share_validation": 0.398,
+   "auto_accuracy_validation": 0.793,
+   "auto_share_test_2022": 0.384,
+   "auto_accuracy_test_2022": 0.787
   },
   {
    "tau": 0.8,
-   "auto_share_validation": 0.242,
-   "auto_accuracy_validation": 0.836,
-   "auto_share_test_2022": 0.231,
+   "auto_share_validation": 0.241,
+   "auto_accuracy_validation": 0.837,
+   "auto_share_test_2022": 0.229,
    "auto_accuracy_test_2022": 0.835
   },
   {
    "tau": 0.9,
-   "auto_share_validation": 0.098,
-   "auto_accuracy_validation": 0.903,
-   "auto_share_test_2022": 0.09,
-   "auto_accuracy_test_2022": 0.891
+   "auto_share_validation": 0.097,
+   "auto_accuracy_validation": 0.902,
+   "auto_share_test_2022": 0.088,
+   "auto_accuracy_test_2022": 0.892
   }
  ],
  "conformal": {
   "alpha": 0.1,
-  "qhat": 0.967378110945319,
-  "coverage_2022": 0.891,
-  "mean_set_size": 3.89,
+  "qhat": 0.9673739397139564,
+  "coverage_2022": 0.892,
+  "mean_set_size": 3.9,
   "singleton_share": 0.097,
-  "singleton_accuracy": 0.883,
+  "singleton_accuracy": 0.882,
   "empty_set_share": 0.0
  }
 }

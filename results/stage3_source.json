@@ -1,5 +1,16 @@
 {
- "data": "Demo patients (synthetic)",
- "label": "Demo patients (synthetic)",
- "patients_on_board": 182
+ "data": "PhysioNet 2019 (real ICU patients)",
+ "label": "Real ICU patients \u00b7 PhysioNet 2019",
+ "hospital": "B (never used for training)",
+ "patients_on_board": 200,
+ "with_later_sepsis": 50,
+ "trained_on": "12000 hospital-A patients",
+ "missing": [
+  "consciousness level",
+  "vasopressors",
+  "urine output",
+  "ventilation flag",
+  "PaO2"
+ ],
+ "note": "Kidney injury from creatinine only; shock from blood pressure, heart rate and lactate only."
 }

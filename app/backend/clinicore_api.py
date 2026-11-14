@@ -51,15 +51,31 @@ if SOURCE == "exasol":
     _con = S1.Source("exasol", SCHEMA).con
 D = Data(SOURCE, str(PIPE), STATE, SCHEMA, _con)
 if SOURCE == "exasol":                                             # one pyexasol connection is not thread-safe: serialise all access
+    import time as _time
     _raw_read, _raw_append = D.store.read, D.store.append
+    _cache, _tables = {}, {"t": 0.0, "names": set()}
+    STAFF_TTL, TABLES_TTL = 3.0, 15.0                              # several pages poll the same tables every few seconds
+
+    def _exists(name):
+        if _time.time() - _tables["t"] > TABLES_TTL:
+            rows = _con.execute(f"SELECT TABLE_NAME FROM EXA_ALL_TABLES WHERE TABLE_SCHEMA='{SCHEMA}'").fetchall()
+            _tables.update(t=_time.time(), names={r[0] for r in rows})
+        return name.upper() in _tables["names"]
 
     def _locked_read(name):
         with _lock:
-            return _raw_read(name)
+            hit = _cache.get(name)
+            if hit and _time.time() - hit[0] < STAFF_TTL:
+                return hit[1].copy()
+            df = _raw_read(name) if _exists(name) else pd.DataFrame()   # a table nobody has written yet costs no round trip
+            _cache[name] = (_time.time(), df)
+            return df.copy()
 
     def _locked_append(name, df):
         with _lock:
-            return _raw_append(name, df)
+            r = _raw_append(name, df)
+            _cache.pop(name, None); _tables["names"].add(name.upper())
+            return r
     D.store.read, D.store.append = _locked_read, _locked_append
 
 
@@ -277,11 +293,12 @@ def ed_queue(limit: int = 40):
         it = it[~it.visit_id.astype(int).isin(labelled)]
         it = it[(it.route == "DOCTOR_QUEUE") | (it.audit.astype(int) == 1)].iloc[::-1]
         live = [dict(r, source="live intake", chief_complaint=np.nan) for r in it.to_dict("records")]
-    hist = D.doctor_queue().head(limit).to_dict("records")
+    dq = D.doctor_queue()
+    hist = dq.head(limit).to_dict("records")
     audit = D.audit_sample(AUDIT_RATE).head(10).to_dict("records")
     return jsonable(dict(live=[card(r, labelled) for r in live], waiting=[card(dict(r, source="earlier ED visit"), labelled) for r in hist],
                          audit=[card(dict(r, source="earlier ED visit"), labelled) for r in audit], counter=counter(1),
-                         waiting_total=int(len(D.doctor_queue())), live_total=len(live)))
+                         waiting_total=int(len(dq)), live_total=len(live)))
 
 
 @router.get("/ed/visit/{vid}")
@@ -354,8 +371,19 @@ def risk_items(r: dict) -> list:
     return out
 
 
+_SRC = {"t": 0.0, "v": None}
+
+
 def icu_source() -> dict:
-    """Where the ICU board patients come from (written by stage3_multirisk.py or physionet_icu.py)."""
+    """Where the ICU board patients come from (written by stage3_multirisk.py or physionet_icu.py). Cached 30 s."""
+    import time as _t
+    if _SRC["v"] is not None and _t.time() - _SRC["t"] < 30:
+        return _SRC["v"]
+    _SRC.update(t=_t.time(), v=_icu_source())
+    return _SRC["v"]
+
+
+def _icu_source() -> dict:
     try:
         if SOURCE == "exasol":
             t = D.store.read("ST3_SOURCE")
@@ -379,7 +407,7 @@ def icu_board():
     for i, r in enumerate(b.to_dict("records")):
         sid = int(r["stay_id"]); mine = v[v.stay_id.astype(int) == sid] if len(v) else v
         beds.append(dict(bed=i + 1, stay_id=sid, criticality=r.get("criticality"), level=r.get("risk_level"), trend=r.get("trend_6h"), change_6h=r.get("change_6h"),
-                         hour=r.get("hour_idx"), risks=risk_items(r), verdicts=records(mine[["risk", "verdict", "reason_code"]]) if len(mine) and "reason_code" in mine else []))
+                         hour=r.get("hour_idx"), risks=risk_items(r), vitals={k[2:]: r.get(k) for k in r if k.startswith("v_")}, verdicts=records(mine[["risk", "verdict", "reason_code"]]) if len(mine) and "reason_code" in mine else []))
         if len(nt):
             mn = nt[nt.stay_id.astype(int) == sid]
             if len(mn):
@@ -391,7 +419,7 @@ def icu_board():
     if "_auto_notify" in globals():
         _auto_notify(beds)
     return jsonable(dict(beds=beds, counter=counter(3), reasons=[dict(code=k, label=l) for k, l in FALSE_ALARM_REASONS.items()],
-                         data_note=icu_source().get("label", "Demo patients"), source=icu_source()))
+                         data_note=(src := icu_source()).get("label", "Demo patients"), source=src))
 
 
 @router.get("/icu/stay/{sid}")
@@ -401,7 +429,9 @@ def icu_stay(sid: int):
     if row.empty:
         raise HTTPException(404, f"unknown stay {sid}")
     r = row.iloc[0].to_dict(); t = D.timeline(sid)
-    return jsonable(dict(stay_id=sid, criticality=r.get("criticality"), level=r.get("risk_level"), trend=r.get("trend_6h"), risks=risk_items(r),
+    v = D.table("ST3_VITALS")
+    vit = records(v[v.stay_id.astype(int) == sid].sort_values("hour_idx").drop(columns=["stay_id"])) if len(v) else []
+    return jsonable(dict(stay_id=sid, criticality=r.get("criticality"), level=r.get("risk_level"), trend=r.get("trend_6h"), risks=risk_items(r), vitals=vit,
                          timeline=records(t[["hour_idx", "criticality", "crit_level", "top_domain", "top_tier"]]) if len(t) else []))
 
 
@@ -581,10 +611,14 @@ class AutoNotify(BaseModel):
 
 
 def _bed(sid: int) -> dict:
-    for b in icu_board()["beds"]:
-        if b["stay_id"] == sid:
-            return b
-    raise HTTPException(404, f"unknown stay {sid}")
+    """One bed, without rebuilding the whole board (no feedback/notification reads)."""
+    b = D.icu_board()
+    pos = b.index[b.stay_id.astype(int) == int(sid)]
+    if not len(pos):
+        raise HTTPException(404, f"unknown stay {sid}")
+    r = b.loc[pos[0]].to_dict()
+    return jsonable(dict(bed=int(pos[0]) + 1, stay_id=int(sid), criticality=r.get("criticality"), level=r.get("risk_level"), trend=r.get("trend_6h"),
+                         change_6h=r.get("change_6h"), hour=r.get("hour_idx"), risks=risk_items(r)))
 
 
 @router.get("/notify/meta")

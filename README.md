@@ -14,13 +14,31 @@ Built for the Exasol × Medical Valley EMN Healthcare Hackathon (Nov 2026, theme
 |---|---|---|
 | **1 · ED intake** | triage nurse, patient | Age, complaint, vital signs and history → a **diagnosis group** (17 groups). The patient sees an answer only when the model is confident **and** the case looks like the training data; otherwise *"A doctor will review your case"*. |
 | **2 · Doctor in the loop** | ED doctor | Unsure and unusual cases plus a random 5 % of confident answers go to a doctor queue. The doctor confirms a group and can add their own words. **Every 50 labels the model retrains itself** and goes live only if it passes a safety check. |
-| **3 · ICU risk** | ICU nurse, doctor | Each hour: sepsis, respiratory failure, kidney injury and circulatory shock, **ranked by severity**, each shown with the vitals and labs behind it, plus an overall criticality score and an early warning when a risk is about to reach *High*. Wall view with hour-by-hour replay for the central station. |
+| **3 · ICU risk** | ICU nurse, doctor | Each hour: sepsis, respiratory failure, kidney injury and circulatory shock, **ranked by severity**, each shown with the vitals and labs behind it, plus an overall criticality score and an early warning when a risk is about to reach *High*. One screen: a monitor wall of all beds with live vital signs; click a bed for its ranked risks, live vitals and history. |
 | **Escalation** | nurse → on-call doctor | *Notify doctor* sends an SBAR message to the right on-call doctor (ICU attending + specialist for the top risk); it pops up on the doctor's screen, who answers *On my way* / *Acknowledge*. Optional auto-alert for rising Critical patients. |
 | **Learning from false alarms** | ICU staff | A false alarm needs a reason (sensor error, expected for this patient, already treated, …). **Every 50 false alarms the ICU models retrain**; "the warning was right but treatment prevented the event" is logged but never taught as a false alarm. |
 
-| ED intake | Doctor queue | Notify doctor | Wall replay |
+| ED intake | Doctor queue | Notify doctor | Live vital signs |
 |---|---|---|---|
-| ![](docs/img/ed_intake.png) | ![](docs/img/doctor_queue.png) | ![](docs/img/notify_doctor.png) | ![](docs/img/icu_wall_replay.png) |
+| ![](docs/img/ed_intake.png) | ![](docs/img/doctor_queue.png) | ![](docs/img/notify_doctor.png) | ![](docs/img/icu_live_vitals.png) |
+
+## How the models work
+
+No deep network in the final system: on our real data the simpler models were as good or better, and they are calibrated and readable. (An MLP with two hidden ReLU layers, 64 and 32, and a GRU-D recurrent network were both tried; see [the technical report](docs/technical-report.md).)
+
+**Stage 1: logistic regression + "is the model sure?" routing**
+
+![Stage 1 model](docs/img/model_stage1.gif)
+
+**Stage 2: the doctor-in-the-loop retraining cycle** (a loop around Stage 1, not a separate model)
+
+![Stage 2 loop](docs/img/model_stage2.gif)
+
+**Stage 3: one LightGBM model per ICU risk, bedside rule tiers, criticality score, false-alarm loop**
+
+![Stage 3 model](docs/img/model_stage3.gif)
+
+Static versions for slides: `docs/img/model_stage{1,2,3}.png`. Full write-up with every model, layer and parameter count: [docs/technical-report.md](docs/technical-report.md) (PDF: [docs/CliniCore_technical_report.pdf](docs/CliniCore_technical_report.pdf)).
 
 ## Results on real data
 
@@ -47,6 +65,35 @@ Some groups are weak from triage data alone: *sepsis / fever / other infection* 
 | GRU-D + LightGBM | 0.075 | 0.801 | 0.301 | 60 % | 1.27 |
 
 Decision rule fixed in advance: keep the simplest model unless another one wins on **both** AUPRC and utility with 95 % confidence. The hybrid's AUPRC gain was real but tiny (+0.002 to +0.011) and its utility gain was not significant, so LightGBM stays. Chance-level AUPRC is about 0.018. We make **no** "state of the art" claim: the split is not the official hidden test set and the utility score is our re-implementation.
+
+**Stage 3, all four ICU risks on real patients** (`pipeline/physionet_icu.py`: 12,000 hospital-A patients for training, 6,000 hospital-B patients for testing):
+
+| Risk (window) | Events in B | AUROC B | AUPRC B | Best bedside baseline on the same patients |
+|---|---|---|---|---|
+| Sepsis (6 h) | 1,963 | **0.753** | 0.033 | current rule tier 0.615, qSOFA 0.583 |
+| Breathing failure (6 h) | 16,679 | **0.840** | 0.334 | NEWS2 0.788, current rule tier 0.613 |
+| Kidney injury (12 h) | 2,800 | **0.909** | 0.221 | current rule tier 0.589 |
+| Shock (6 h) | 4,292 | **0.939** | 0.335 | current rule tier 0.501 |
+
+![Head to head vs bedside scores](docs/img/comparison_bedside.png)
+
+The multi-risk sepsis model (0.753) is a little below the dedicated benchmark model above (0.800): it shares one feature set with the other three risks and is trained on 12,000 instead of 20,000 patients. Kidney, breathing and shock outcomes are defined by the bedside rules reaching *High* within the window, because PhysioNet has no vasopressor, urine-output or PaO2 data; treat those three as early-warning-of-rule-escalation, not as diagnoses.
+
+### How this compares with published work
+
+None of these are head-to-head (different patients, splits and sepsis definitions), but they show where CliniCore sits.
+
+![Where CliniCore stands](docs/img/comparison.png)
+
+| System | Setting | Reported result | CliniCore |
+|---|---|---|---|
+| PhysioNet 2019 winner (Morrill et al.) | official hidden test, 3 hospitals | utility **0.360** overall; 0.433 / 0.434 on hospitals A / B; **−0.123** on unseen hospital C | **≈ 0.306** on hospital B, trained only on hospital A (a cross-hospital test, closer to their hospital-C setting) |
+| PhysioNet 2019, 6th of 78 (SBU) | official hidden test | utility 0.332 | same ballpark |
+| Epic Sepsis Model, external validation (Wong et al., JAMA Intern Med 2021) | 38,455 hospitalisations, Michigan | AUROC **0.63** (vendor: 0.76–0.83); missed 67 % of sepsis; alerted on 18 % of all patients; 12 % of alerts correct | AUROC **0.80** on another hospital's ICU patients; 62 % of septic patients alerted at 1.24 false-alert hours per 24 h; every false alarm needs a reason and teaches the model |
+| Bedside scores (NEWS, qSOFA), systematic review (Sabir et al., EMJ 2022) | ED, mortality | AUROC NEWS 0.59–0.88, qSOFA 0.57–0.79 | same patients: sepsis 0.75 vs qSOFA 0.58; breathing failure 0.84 vs NEWS2 0.79 (chart above) |
+| Stage 1 (diagnosis group from triage) | no public benchmark exists | – | 59 % vs 17 % baseline; top-3 83 %; unsure cases routed to a doctor |
+
+What we claim: an open, externally tested, explainable pipeline in the same range as published challenge entries, tested across hospitals (the step where the winner and the commercial model both dropped), with a fixed alert budget, and a built-in loop for learning from staff corrections. What we do **not** claim: beating the challenge winners or being validated for clinical use.
 
 ## Quick start (Windows, ~5 minutes)
 

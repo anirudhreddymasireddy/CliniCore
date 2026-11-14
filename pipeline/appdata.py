@@ -8,7 +8,7 @@ from retrain import Store, FB1, FB3, REG, THRESHOLD, FALSE_ALARM_REASONS
 GROUP_LABELS = {}          # optional prettier names, filled by the app if wanted
 DOMAIN_NAMES = {"sepsis": "Sepsis", "arf": "Acute respiratory failure", "aki": "Acute kidney injury", "shock": "Circulatory shock"}
 CSV_FILES = {"ST1_PREDICTIONS": "stage1_predictions.csv", "ST1_ROUNDS": "stage1_rounds.csv", "ST3_RISKS": "results/stage3_risks_snapshot.csv",
-             "ST3_RISK_TIMELINE": "results/stage3_risk_timeline.csv", "ST3_RISK_METRICS": "results/stage3_multirisk_metrics.csv"}
+             "ST3_RISK_TIMELINE": "results/stage3_risk_timeline.csv", "ST3_RISK_METRICS": "results/stage3_multirisk_metrics.csv", "ST3_VITALS": "results/stage3_vitals.csv"}
 
 
 class Data:
@@ -17,16 +17,26 @@ class Data:
         self.store = Store(kind, state if kind == "csv" else None, schema, con)
 
     _cache: dict = {}
-    CACHE_S = 30                                     # result tables only change when a pipeline reruns; staff tables are never cached
+    # result tables only change when a pipeline reruns: Stage 1 predictions rarely, the ICU board at most every few minutes
+    CACHE_S = {"ST1_PREDICTIONS": 600, "ST3_RISK_METRICS": 600}
+    CACHE_DEFAULT = 60
 
     def table(self, name):
-        if self.kind == "exasol" and name not in (FB1, FB3, REG):
+        if name in (FB1, FB3, REG):
+            return self._table(name)                 # staff tables: always fresh
+        if self.kind == "csv":                       # re-read a result file only when it changed on disk
+            f = os.path.join(self.base, CSV_FILES[name])
+            key = os.path.getmtime(f) if os.path.exists(f) else None
             hit = self._cache.get(name)
-            if hit and time.time() - hit[0] < self.CACHE_S:
-                return hit[1].copy()
-            df = self._table(name); self._cache[name] = (time.time(), df)
-            return df.copy()
-        return self._table(name)
+            if hit and hit[0] == key:
+                return hit[1]
+            df = self._table(name); self._cache[name] = (key, df)
+            return df
+        hit = self._cache.get(name)
+        if hit and time.time() - hit[0] < self.CACHE_S.get(name, self.CACHE_DEFAULT):
+            return hit[1]
+        df = self._table(name); self._cache[name] = (time.time(), df)
+        return df
 
     def _table(self, name):
         if self.kind == "csv" and name not in (FB1, FB3, REG):

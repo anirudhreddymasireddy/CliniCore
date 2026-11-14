@@ -139,8 +139,7 @@ def main():
         print("[6/6] writing to Exasol ...", flush=True)
         con = Source("exasol", a.out_schema).con
         write_exasol(con, a.out_schema, "ST3_RISK_METRICS", met, replace=True)
-        write_exasol(con, a.out_schema, "ST3_RISKS", snap, replace=True)
-        write_exasol(con, a.out_schema, "ST3_RISK_TIMELINE", tl, replace=True)
+        M.write_board_exasol(con, a.out_schema, snap, tl, a.out)
         write_exasol(con, a.out_schema, "ST3_SOURCE", pd.DataFrame([{k: (", ".join(v) if isinstance(v, list) else v) for k, v in src.items()}]), replace=True)
     print(f"done in {time.time()-t0:.0f}s: {len(snap)} real patients on the board; levels {snap.risk_level.value_counts().to_dict()}")
 

@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { api, num } from './api'
 import { Counter, LEVEL, Loading, Shell, Toast, inputCls, useToast } from './ui'
 import { STATUS, Sbar, URG } from './notify'
-import { playChime, unlockAudio } from '../lib/sound'
 
 const LEVELS = ['Critical', 'High', 'Watch', 'Low']
 const TREND = { rising: ['↑', 'text-red-300', 'rising'], falling: ['↓', 'text-emerald-300', 'falling'], steady: ['→', 'text-muted', 'steady'], new: ['•', 'text-muted', 'new'] }
@@ -71,22 +70,6 @@ function Timeline({ points, height = 170 }) {
   )
 }
 
-function PatientRow({ b, active, onClick }) {
-  const l = LEVEL[b.level] || {}, t = TREND[b.trend] || TREND.steady, top = b.risks[0]
-  return (
-    <button onClick={onClick} className={`group grid w-full grid-cols-[2.6rem_1fr_auto] items-center gap-3 rounded-lg border px-3 py-2 text-left transition ${active ? 'border-sky-400/70 bg-sky-500/10' : 'border-transparent hover:border-line hover:bg-panel-2'}`}>
-      <div className="relative grid h-10 w-10 place-items-center rounded-lg text-base font-black" style={{ background: `${l.color}22`, color: l.color }}>
-        {num(b.criticality)}
-      </div>
-      <div className="min-w-0">
-        <div className="flex items-center gap-2 text-sm"><b>Bed {b.bed}</b><span className="text-xs text-muted">#{b.stay_id}</span><span className={`text-xs ${t[1]}`}>{t[0]} {t[2]}</span>{b.notified && <span title={b.notified.any_open ? 'doctor alerted, waiting for reply' : 'doctor responded'} className={b.notified.any_open ? 'text-amber-300' : 'text-emerald-300'}>🔔</span>}</div>
-        <div className="truncate text-xs text-muted">{top ? <>{DOMAIN_ICON[top.domain]} {top.name} · {top.evidence}</> : 'No active risk'}</div>
-      </div>
-      <div className="flex gap-1">{b.risks.map((r) => <span key={r.domain} title={`${r.name}: ${r.tier}`} className="h-6 w-1.5 rounded-full" style={{ background: LEVEL[r.tier]?.color }} />)}</div>
-    </button>
-  )
-}
-
 function FalseAlarmForm({ reasons, onSubmit, onCancel }) {
   const [reason, setReason] = useState('')
   const [note, setNote] = useState('')
@@ -141,104 +124,11 @@ function RiskCard({ r, reasons, done, onFalse }) {
 }
 
 
-const RANK = { Low: 0, Watch: 1, High: 2, Critical: 3 }
-function stateAt(points, h) {
-  let cur = null
-  for (const p of points) { if (p[0] <= h) cur = p; else break }
-  return cur ? { score: cur[1], level: cur[2], domain: cur[3], tier: cur[4] } : { score: 0, level: 'Low', domain: '', tier: 0 }
-}
-
-function WallView({ beds, onOpen }) {
-  const [tl, setTl] = useState(null)
-  const [mode, setMode] = useState('now')            // 'now' = latest values, 'replay' = play the stays hour by hour
-  const [hour, setHour] = useState(0)
-  const [playing, setPlaying] = useState(false)
-  const [speed, setSpeed] = useState(2)
-  const [sound, setSound] = useState(true)
-  const [feed, setFeed] = useState([])
-  const prev = useRef({})
-  const box = useRef(null)
-  useEffect(() => { api('/api/icu/timelines').then(setTl).catch(() => setTl({})) }, [])
-  const maxH = useMemo(() => Math.min(120, Math.max(24, ...Object.values(tl || {}).map((p) => p.at(-1)?.[0] || 0))), [tl])
-  useEffect(() => {
-    if (!playing) return
-    const t = setInterval(() => setHour((h) => { if (h >= maxH) { setPlaying(false); return h } return h + 1 }), 1000 / speed)
-    return () => clearInterval(t)
-  }, [playing, speed, maxH])
-  const tiles = useMemo(() => beds.map((b) => {
-    if (mode === 'now' || !tl) return { ...b, score: b.criticality, lvl: b.level, dom: b.risks[0]?.domain, domName: b.risks[0]?.name }
-    const s = stateAt(tl[String(b.stay_id)] || [], hour)
-    return { ...b, score: s.score, lvl: s.level, dom: s.domain, domName: DOMAIN_NAME[s.domain] }
-  }).sort((a, b) => (RANK[b.lvl] - RANK[a.lvl]) || (b.score - a.score)), [beds, tl, mode, hour])
-  // new escalations -> alert feed (+ chime for Critical)
-  useEffect(() => {
-    if (mode !== 'replay') { prev.current = {}; return }
-    const ev = []
-    for (const t of tiles) {
-      const before = prev.current[t.stay_id]
-      if (before !== undefined && RANK[t.lvl] > RANK[before] && RANK[t.lvl] >= 2) ev.push({ id: `${t.stay_id}-${hour}`, hour, bed: t.bed, stay_id: t.stay_id, lvl: t.lvl, dom: t.domName, score: t.score })
-      prev.current[t.stay_id] = t.lvl
-    }
-    if (ev.length) { setFeed((f) => [...ev, ...f].slice(0, 40)); if (sound && ev.some((e) => e.lvl === 'Critical')) playChime() }
-  }, [tiles, mode, hour, sound])
-  const counts = Object.fromEntries(['Critical', 'High', 'Watch', 'Low'].map((k) => [k, tiles.filter((t) => t.lvl === k).length]))
-  const startReplay = () => { unlockAudio(); setMode('replay'); setFeed([]); prev.current = {}; setHour(0); setPlaying(true) }
-  const full = () => (document.fullscreenElement ? document.exitFullscreen() : box.current?.requestFullscreen?.())
-  useEffect(() => {
-    const k = (e) => { if (e.target.closest?.('input, textarea, select')) return
-      if (e.key === ' ' && mode === 'replay') { e.preventDefault(); setPlaying((p) => !p) }
-      if (e.key === 'f') full() }
-    window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k)
-  })
-  return (
-    <div ref={box} className="rounded-xl border border-line bg-bg p-3">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="flex rounded-lg bg-panel p-0.5 text-sm font-bold">
-          <button onClick={() => { setMode('now'); setPlaying(false) }} className={`rounded-md px-3 py-1 ${mode === 'now' ? 'bg-sky-500 text-white' : 'text-muted'}`}>Now</button>
-          <button onClick={startReplay} className={`rounded-md px-3 py-1 ${mode === 'replay' ? 'bg-sky-500 text-white' : 'text-muted'}`}>Replay stays</button>
-        </div>
-        {mode === 'replay' && <>
-          <button onClick={() => setPlaying((p) => !p)} className="rounded-md bg-panel px-3 py-1 text-sm font-bold" aria-label={playing ? 'pause' : 'play'}>{playing ? '❚❚ Pause' : '▶ Play'}</button>
-          <input type="range" min="0" max={maxH} value={hour} onChange={(e) => { setHour(Number(e.target.value)); setPlaying(false) }} className="w-48 accent-sky-400" aria-label="hour" />
-          <span className="w-28 text-sm"><b>hour {hour}</b><span className="text-muted"> / {maxH}</span></span>
-          <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} className="rounded-md border border-line bg-panel px-2 py-1 text-sm">{[1, 2, 4, 8].map((x) => <option key={x} value={x}>{x} h/s</option>)}</select>
-        </>}
-        <div className="ml-auto flex items-center gap-3 text-sm">
-          {['Critical', 'High', 'Watch', 'Low'].map((k) => <span key={k} className="font-bold" style={{ color: LEVEL[k].color }}>{LEVEL[k].icon} {counts[k]}</span>)}
-          <button onClick={() => setSound((x) => !x)} className="rounded-md bg-panel px-2 py-1" title="chime on new Critical">{sound ? '🔊' : '🔈'}</button>
-          <button onClick={full} className="rounded-md bg-panel px-2 py-1" title="full screen (F)">⛶</button>
-        </div>
-      </div>
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_280px]">
-        <div className="grid content-start gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
-          {tiles.map((t) => {
-            const l = LEVEL[t.lvl] || LEVEL.Low
-            return (
-              <button key={t.stay_id} onClick={() => onOpen(t.stay_id)} title={`patient #${t.stay_id}`}
-                      className={`rounded-lg border-2 p-2 text-left transition hover:brightness-125 ${t.lvl === 'Critical' ? 'anim-soft-pulse' : ''}`}
-                      style={{ borderColor: `${l.color}${t.lvl === 'Low' ? '44' : 'cc'}`, background: `${l.color}${t.lvl === 'Low' ? '0d' : '1f'}` }}>
-                <div className="flex items-center justify-between text-xs"><b>Bed {t.bed}</b>{t.notified && <span>🔔</span>}</div>
-                <div className="text-3xl font-black leading-tight" style={{ color: t.lvl === 'Low' ? '#a6b2c8' : l.color }}>{num(t.score)}</div>
-                <div className="truncate text-xs text-muted">{t.dom ? `${DOMAIN_ICON[t.dom] || ''} ${t.domName || ''}` : 'stable'}</div>
-              </button>
-            )
-          })}
-        </div>
-        <aside className="rounded-lg border border-line bg-panel p-3">
-          <h3 className="mb-2 text-sm font-bold">Alerts {mode === 'replay' ? `· replay` : ''}</h3>
-          {mode === 'now' ? <p className="text-xs text-muted">Press "Replay stays" to play the ICU stays hour by hour. Patients who escalate to High or Critical appear here, with a chime for Critical. Space = pause, F = full screen.</p>
-            : feed.length ? <div className="grid max-h-[60vh] gap-1.5 overflow-auto">{feed.map((e) => (
-              <button key={e.id} onClick={() => onOpen(e.stay_id)} className="anim-fade-up rounded-md border-l-4 bg-panel-2 px-2 py-1.5 text-left text-xs" style={{ borderColor: LEVEL[e.lvl].color }}>
-                <b>Bed {e.bed}</b> → <b style={{ color: LEVEL[e.lvl].color }}>{e.lvl}</b> {num(e.score)}<br /><span className="text-muted">hour {e.hour} · {e.dom || 'combined'}</span>
-              </button>))}</div> : <p className="text-xs text-muted">No escalations yet.</p>}
-        </aside>
-      </div>
-    </div>
-  )
-}
 
 function NotifyPanel({ bed, meta, role, onClose, onSent }) {
-  const [docs, setDocs] = useState([])
+  const SPEC = { sepsis: 'infectious', arf: 'pulmonology', aki: 'nephrology', shock: 'cardiology' }
+  const [docs, setDocs] = useState(() => ['icu_attending', ...(bed.risks[0] && SPEC[bed.risks[0].domain] ? [SPEC[bed.risks[0].domain]] : [])])
+  const [pErr, setPErr] = useState('')
   const [urg, setUrg] = useState(bed.level === 'Critical' ? 'emergency' : bed.level === 'High' ? 'urgent' : 'routine')
   const [risks, setRisks] = useState(bed.risks.map((r) => r.domain))
   const [note, setNote] = useState('')
@@ -247,7 +137,7 @@ function NotifyPanel({ bed, meta, role, onClose, onSent }) {
   const [err, setErr] = useState('')
   useEffect(() => {
     const t = setTimeout(() => api(`/api/notify/preview?stay_id=${bed.stay_id}&urgency=${urg}&risks=${risks.join(',')}&note=${encodeURIComponent(note)}`)
-      .then((p) => { setPreview(p.message); setDocs((d) => (d.length ? d : p.suggested)) }).catch(() => {}), 200)
+      .then((p) => { setPreview(p.message); setPErr('') }).catch((e) => setPErr(e.message)), 200)
     return () => clearTimeout(t)
   }, [bed.stay_id, urg, risks, note])
   useEffect(() => { const k = (e) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k) }, [onClose])
@@ -277,7 +167,7 @@ function NotifyPanel({ bed, meta, role, onClose, onSent }) {
                 <button key={r.domain} onClick={() => toggle(risks, setRisks, r.domain)} className={`rounded-full border px-2.5 py-1 text-xs ${risks.includes(r.domain) ? 'border-sky-400 bg-sky-500/15' : 'border-line text-muted line-through'}`}>{DOMAIN_ICON[r.domain]} {r.name} · {r.tier}</button>))}</div></div>
             <textarea rows="2" maxLength="300" className={`${inputCls} text-sm`} placeholder="Add a note for the doctor (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
-          <div><div className="mb-1.5 text-sm font-bold">Message preview <span className="font-normal text-muted">(SBAR, measured values only)</span></div><Sbar text={preview} /></div>
+          <div><div className="mb-1.5 text-sm font-bold">Message preview <span className="font-normal text-muted">(SBAR, measured values only)</span></div>{preview ? <Sbar text={preview} /> : <div className="rounded-lg bg-bg p-3 text-xs text-muted">{pErr ? `Preview not available: ${pErr}` : 'Loading preview…'}</div>}</div>
         </div>
         {err && <p className="mt-3 rounded-md bg-red-500/15 p-2 text-sm text-red-200">{err}</p>}
         <div className="mt-4 flex items-center gap-2">
@@ -302,6 +192,104 @@ function AutoSwitch({ value, onChange }) {
   )
 }
 
+// ---------- live vitals (demo: small beat-to-beat movement around the patient's real recorded values; a hospital feed replaces this)
+const VIT = {
+  hr: { label: 'Heart rate', unit: '/min', jit: 2, d: 0, bad: (v) => v > 110 || v < 50, color: '#4ade80' },
+  spo2: { label: 'SpO₂', unit: '%', jit: 0.7, d: 0, max: 100, bad: (v) => v < 92, color: '#38bdf8' },
+  sbp: { label: 'Blood pressure', unit: 'mmHg', jit: 2.5, d: 0, bad: (v) => v < 90 || v > 180, color: '#f87171' },
+  rr: { label: 'Breathing rate', unit: '/min', jit: 1, d: 0, bad: (v) => v > 24 || v < 8, color: '#facc15' },
+  temp_c: { label: 'Temperature', unit: '°C', jit: 0.04, d: 1, bad: (v) => v >= 38.3 || v < 36, color: '#fb923c' },
+}
+// one shared clock; only the small components that show live numbers subscribe, so the page itself never re-renders for it
+const clock = { t: 0, subs: new Set() }
+setInterval(() => { clock.t += 0.5; clock.subs.forEach((f) => f()) }, 500)
+function useClock() {
+  return useSyncExternalStore((f) => { clock.subs.add(f); return () => clock.subs.delete(f) }, () => clock.t)
+}
+function wobble(seed, t) {                                   // deterministic smooth noise in [-1, 1]
+  return Math.sin(t * 0.9 + seed * 1.7) * 0.6 + Math.sin(t * 2.3 + seed * 0.37) * 0.4
+}
+function liveVal(base, key, seed, t) {
+  if (base == null || Number.isNaN(base)) return null
+  const v = VIT[key], x = base + wobble(seed + key.length * 13, t) * v.jit
+  return v.max ? Math.min(v.max, x) : x
+}
+const fmt = (key, v) => (v == null ? '–' : Number(v).toFixed(VIT[key]?.d ?? 0))
+
+function TileVitals({ v, seed }) {
+  const t = Math.floor(useClock())                       // tiles: once per second
+  const hr = liveVal(v.hr, 'hr', seed, t), sp = liveVal(v.spo2, 'spo2', seed, t), sbp = liveVal(v.sbp, 'sbp', seed, t), dbp = liveVal(v.dbp, 'sbp', seed + 7, t)
+  const cell = (k, val, txt) => <span className={VIT[k].bad(val ?? NaN) ? 'font-bold text-red-300' : ''}>{txt}</span>
+  return (
+    <div className="mt-1 grid grid-cols-3 gap-1 border-t border-white/10 pt-1 font-mono text-[11px] tabular-nums">
+      <span><span className="text-muted">HR </span>{cell('hr', hr, fmt('hr', hr))}</span>
+      <span><span className="text-muted">SpO₂ </span>{cell('spo2', sp, fmt('spo2', sp))}</span>
+      <span className="text-right">{cell('sbp', sbp, sbp == null ? '–' : `${fmt('sbp', sbp)}/${fmt('sbp', dbp)}`)}</span>
+    </div>
+  )
+}
+
+const BedTile = memo(function BedTile({ b, active, onOpen }) {
+  const l = LEVEL[b.level] || LEVEL.Low
+  return (
+    <button onClick={() => onOpen(b.stay_id)} title={`patient #${b.stay_id}`}
+            className={`rounded-lg border-2 p-2 text-left transition-colors hover:bg-white/5 ${active ? 'ring-2 ring-sky-400' : ''} ${b.level === 'Critical' ? 'tile-pulse' : ''}`}
+            style={{ borderColor: `${l.color}${b.level === 'Low' ? '55' : 'cc'}`, background: `${l.color}${b.level === 'Low' ? '0d' : '1c'}` }}>
+      <div className="flex items-center justify-between text-xs"><b>Bed {b.bed}</b><span className="flex items-center gap-1">{b.notified && <span>🔔</span>}<span style={{ color: l.color }}>{l.icon}</span></span></div>
+      <div className="flex items-end justify-between">
+        <span className="text-3xl font-black leading-tight" style={{ color: b.level === 'Low' ? '#a6b2c8' : l.color }}>{num(b.criticality)}</span>
+        <span className="truncate pb-1 text-[11px] text-muted">{b.risks[0] ? `${DOMAIN_ICON[b.risks[0].domain] || ''} ${DOMAIN_NAME[b.risks[0].domain] || ''}` : 'stable'}</span>
+      </div>
+      <TileVitals v={b.vitals || {}} seed={b.stay_id} />
+    </button>
+  )
+}, (p, n) => p.active === n.active && p.onOpen === n.onOpen && p.b.stay_id === n.b.stay_id && p.b.criticality === n.b.criticality && p.b.level === n.b.level && !!p.b.notified === !!n.b.notified)
+
+function LiveTrace({ base, k, seed, t, color, n = 60 }) {
+  if (base == null) return <div className="h-10" />
+  const pts = Array.from({ length: n }, (_, i) => liveVal(base, k, seed, t - (n - 1 - i) / 2))   // last 30 s, 2 samples per second
+  const lo = Math.min(...pts), hi = Math.max(...pts), span = Math.max(hi - lo, VIT[k].jit * 2)
+  const mid = (lo + hi) / 2
+  const d = pts.map((v, i) => `${i ? 'L' : 'M'}${(i / (n - 1)) * 200},${20 - ((v - mid) / span) * 30}`).join(' ')
+  return <svg viewBox="0 0 200 40" className="h-10 w-full" preserveAspectRatio="none" aria-hidden><path d={d} fill="none" stroke={color} strokeWidth="1.8" vectorEffect="non-scaling-stroke" /><circle cx="200" cy={20 - ((pts[n - 1] - mid) / span) * 30} r="2.5" fill={color} /></svg>
+}
+
+function Trend({ series, k, color }) {
+  const pts = (series || []).filter((r) => r[k] != null)
+  if (pts.length < 2) return <div className="text-[11px] text-muted">no earlier values</div>
+  const xs = pts.map((r) => r.hour_idx), ys = pts.map((r) => r[k]), x0 = Math.min(...xs), x1 = Math.max(...xs), lo = Math.min(...ys), hi = Math.max(...ys), sp = Math.max(hi - lo, 1e-6)
+  const d = pts.map((r, i) => `${i ? 'L' : 'M'}${((r.hour_idx - x0) / Math.max(x1 - x0, 1)) * 200},${26 - ((r[k] - lo) / sp) * 22}`).join(' ')
+  return (
+    <div title={`last ${x1 - x0} h: ${fmt(k, lo)} – ${fmt(k, hi)}`}>
+      <svg viewBox="0 0 200 28" className="h-7 w-full" preserveAspectRatio="none" aria-hidden><path d={d} fill="none" stroke={color} strokeOpacity="0.55" strokeWidth="1.5" vectorEffect="non-scaling-stroke" /></svg>
+      <div className="flex justify-between text-[10px] text-muted"><span>{x1 - x0} h ago</span><span>{fmt(k, lo)}–{fmt(k, hi)}</span><span>now</span></div>
+    </div>
+  )
+}
+
+function LiveVitals({ bed, series }) {
+  const t = useClock()
+  const v = bed.vitals || {}
+  return (
+    <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+      {Object.entries(VIT).map(([k, m]) => {
+        const val = liveVal(v[k], k, bed.stay_id, t), dia = k === 'sbp' ? liveVal(v.dbp, 'sbp', bed.stay_id + 7, t) : null
+        const bad = val != null && m.bad(val)
+        return (
+          <div key={k} className={`rounded-lg border bg-bg/60 p-2.5 ${bad ? 'border-red-400/60' : 'border-line'}`}>
+            <div className="flex items-center justify-between text-xs text-muted"><span>{m.label}</span>{val != null && <span className="h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: m.color }} />}</div>
+            <div className="font-mono text-2xl font-black tabular-nums" style={{ color: bad ? '#fca5a5' : m.color }}>
+              {k === 'sbp' && val != null ? `${fmt(k, val)}/${fmt(k, dia)}` : fmt(k, val)}<span className="ml-1 text-xs font-normal text-muted">{val != null ? m.unit : 'not measured'}</span>
+            </div>
+            <LiveTrace base={v[k]} k={k} seed={bed.stay_id} t={t} color={m.color} />
+            <Trend series={series} k={k} color={m.color} />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function Icu() {
   const [b, setB] = useState(null)
   const [err, setErr] = useState(null)
@@ -314,40 +302,41 @@ export default function Icu() {
   const [toast, show] = useToast()
   const [nmeta, setNmeta] = useState(null)
   const [composing, setComposing] = useState(false)
-  const [view, setView] = useState(() => (window.location.hash.includes('view=wall') ? 'wall' : 'list'))
   const [auto, setAuto] = useState(false)
-  useEffect(() => { api('/api/notify/meta').then((m) => { setNmeta(m); setAuto(!!m.auto?.enabled) }).catch(() => {}) }, [])
-  useEffect(() => { const m = window.location.hash.match(/stay=(\d+)/); if (m) setSel(Number(m[1])) }, [])
-  const setAutoOn = async (v) => {
-    setAuto(v)
-    try { const r = await api('/api/notify/auto', { enabled: v }); show(v ? `Auto-notify on${r.sent_now ? ` – ${r.sent_now} alert${r.sent_now === 1 ? '' : 's'} sent now` : ''}` : 'Auto-notify off'); load() } catch (e) { show(e.message, 'err'); setAuto(!v) }
-  }
+  const detailRef = useRef(null)
   const load = useCallback(() => {
     api('/api/icu/board').then((d) => { setB(d); setSel((s) => s ?? d.beds[0]?.stay_id) }).catch((e) => setErr(e.message))
     api('/api/icu/false-alarms').then(setLog).catch(() => {})
   }, [])
-  useEffect(() => { load(); const t = setInterval(load, 10000); return () => clearInterval(t) }, [load])
+  useEffect(() => { load(); const id = setInterval(load, 10000); return () => clearInterval(id) }, [load])
+  useEffect(() => { api('/api/notify/meta').then((m) => { setNmeta(m); setAuto(!!m.auto?.enabled) }).catch(() => {}) }, [])
+  useEffect(() => { const m = window.location.hash.match(/stay=(\d+)/); if (m) setSel(Number(m[1])) }, [])
   useEffect(() => { if (sel) api(`/api/icu/stay/${sel}`).then(setStay).catch(() => setStay(null)) }, [sel])
   const beds = useMemo(() => (b?.beds || []).filter((x) => (filter === 'all' || x.level === filter) && (!q || String(x.stay_id).includes(q) || String(x.bed) === q.trim() || x.risks.some((r) => r.name.toLowerCase().includes(q.toLowerCase())))), [b, filter, q])
+  const open = useCallback((id) => { setSel(id); setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50) }, [])
   useEffect(() => {
     const onKey = (e) => {
       if (e.target.closest?.('input, textarea, select') || !beds.length) return
       const i = beds.findIndex((x) => x.stay_id === sel)
-      if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); setSel(beds[Math.min(beds.length - 1, i + 1)].stay_id) }
-      if (e.key === 'ArrowUp' || e.key === 'k') { e.preventDefault(); setSel(beds[Math.max(0, i - 1)].stay_id) }
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); setSel(beds[Math.min(beds.length - 1, i + 1)].stay_id) }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); setSel(beds[Math.max(0, i - 1)].stay_id) }
     }
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey)
   }, [beds, sel])
   if (!b) return <Shell><Loading error={err} /></Shell>
   const cur = b.beds.find((x) => x.stay_id === sel)
   const counts = Object.fromEntries(LEVELS.map((k) => [k, b.beds.filter((x) => x.level === k).length]))
+  const setAutoOn = async (v) => {
+    setAuto(v)
+    try { const r = await api('/api/notify/auto', { enabled: v }); show(v ? `Auto-alert on${r.sent_now ? ` – ${r.sent_now} alert${r.sent_now === 1 ? '' : 's'} sent now` : ''}` : 'Auto-alert off'); load() } catch (e) { show(e.message, 'err'); setAuto(!v) }
+  }
   const onFalse = async (r, reason, note) => {
     try {
       await api('/api/icu/verdict', { stay_id: cur.stay_id, risk: r.domain, verdict: 'false_alarm', role, reason_code: reason, note })
       show(`False alarm logged for bed ${cur.bed} – ${r.name}`); load(); return true
     } catch (e) { show(e.message, 'err'); return false }
   }
-  const t = TREND[cur?.trend] || TREND.steady
+  const tr = TREND[cur?.trend] || TREND.steady
 
   return (
     <Shell right={<>
@@ -357,88 +346,80 @@ export default function Icu() {
       <AutoSwitch value={auto} onChange={setAutoOn} />
       <Counter c={b.counter} label="False alarms" />
     </>}>
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <div><h1 className="text-2xl font-black">ICU risk <span className={`ml-2 rounded px-2 py-0.5 align-middle text-xs font-semibold ${/real/i.test(b.data_note) ? 'bg-emerald-500/15 text-emerald-300' : 'bg-panel-2 text-muted'}`}
-              title={[b.source?.hospital && `Hospital ${b.source.hospital}`, b.source?.note].filter(Boolean).join(' · ')}>{b.data_note}</span>
-          {b.source?.missing?.length > 0 && <span className="ml-2 align-middle text-xs font-normal text-muted" title={b.source.note}>not recorded in this data: {b.source.missing.join(', ')}</span>}</h1>
-          <p className="text-sm text-muted">{view === 'list' ? 'Sickest first · ↑/↓ to move between patients · each warning lists the vitals and labs behind it' : 'Central station: every bed at a glance · click a bed to open it'}</p></div>
-        <div className="flex rounded-lg border border-line bg-panel p-0.5 text-sm font-bold">
-          {[['list', '☰ Patients'], ['wall', '▦ Wall']].map(([k, l]) => <button key={k} onClick={() => setView(k)} className={`rounded-md px-3 py-1.5 ${view === k ? 'bg-sky-500 text-white' : 'text-muted hover:text-text'}`}>{l}</button>)}
-        </div>
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <h1 className="text-2xl font-black">ICU risk</h1>
+        <span className={`rounded px-2 py-0.5 text-xs font-semibold ${/real/i.test(b.data_note) ? 'bg-emerald-500/15 text-emerald-300' : 'bg-panel-2 text-muted'}`} title={b.source?.note || ''}>{b.data_note}</span>
+        {b.source?.missing?.length > 0 && <span className="text-xs text-muted">not recorded in this data: {b.source.missing.join(', ')}</span>}
+        <span className="ml-auto flex items-center gap-1.5 text-xs text-emerald-300"><span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />live</span>
       </div>
 
-      {view === 'wall' ? <WallView beds={b.beds} onOpen={(id) => { setSel(id); setView('list') }} /> : <>
-      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
         {LEVELS.map((k) => (
           <button key={k} onClick={() => setFilter(filter === k ? 'all' : k)}
-                  className={`rounded-xl border bg-panel p-3 text-left transition hover:bg-panel-2 ${filter === k ? 'ring-2' : ''}`} style={{ borderColor: `${LEVEL[k].color}55`, '--tw-ring-color': LEVEL[k].color }}>
+                  className={`rounded-xl border bg-panel px-3 py-2 text-left transition hover:bg-panel-2 ${filter === k ? 'ring-2' : ''}`} style={{ borderColor: `${LEVEL[k].color}55`, '--tw-ring-color': LEVEL[k].color }}>
             <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wide" style={{ color: LEVEL[k].color }}><span>{LEVEL[k].icon} {k}</span>{filter === k && <span>filter on</span>}</div>
-            <div className="text-3xl font-black">{counts[k]}</div>
-            <div className="text-xs text-muted">patients</div>
+            <div className="text-2xl font-black">{counts[k]} <span className="text-xs font-normal text-muted">patients</span></div>
           </button>
         ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(320px,400px)_minmax(0,1fr)]">
-        <section className="flex max-h-[calc(100vh-240px)] min-h-[420px] flex-col rounded-xl border border-line bg-panel">
-          <div className="flex items-center gap-2 border-b border-line p-2">
-            <input className={`${inputCls} py-1.5 text-sm`} placeholder="Search bed, patient # or risk…" value={q} onChange={(e) => setQ(e.target.value)} />
-            <span className="shrink-0 text-xs text-muted">{beds.length}</span>
-          </div>
-          <div className="flex-1 space-y-0.5 overflow-auto p-1.5">
-            {beds.map((x) => <PatientRow key={x.stay_id} b={x} active={x.stay_id === sel} onClick={() => setSel(x.stay_id)} />)}
-            {!beds.length && <p className="p-4 text-sm text-muted">No patients match.</p>}
-          </div>
-        </section>
-
-        <div className="grid content-start gap-4">
-          {cur ? (
-            <section key={cur.stay_id} className="rounded-xl border border-line bg-panel p-4 anim-fade-up">
-              <div className="flex flex-wrap items-center gap-4">
-                <Gauge value={cur.criticality} level={cur.level} />
-                <div className="flex-1">
-                  <div className="text-xs text-muted">Bed {cur.bed} · patient #{cur.stay_id} · hour {num(cur.hour)} in ICU</div>
-                  <div className="text-2xl font-black" style={{ color: LEVEL[cur.level]?.color }}>{cur.level}</div>
-                  <div className={`text-sm ${t[1]}`}>{t[0]} {t[2]}{cur.change_6h != null ? ` · ${cur.change_6h > 0 ? '+' : ''}${num(cur.change_6h)} in the last 6 h` : ''}</div>
-                </div>
-                <div className="grid justify-items-end gap-1">
-                  <button onClick={() => setComposing(true)} disabled={!nmeta} className="flex items-center gap-2 rounded-lg bg-sky-500 px-3 py-2 text-sm font-bold text-white shadow-lg shadow-sky-500/20 transition hover:bg-sky-600">🔔 Notify doctor</button>
-                  <span className="text-xs text-muted">{cur.risks.length} active risk{cur.risks.length === 1 ? '' : 's'} · ranked by severity</span>
-                </div>
-              </div>
-              {cur.notified && (
-                <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 py-2 text-sm">
-                  <span>🔔</span><span className={`rounded px-1.5 text-xs font-bold ${URG[cur.notified.urgency]?.cls || ''}`}>{URG[cur.notified.urgency]?.label}</span>
-                  <span className="text-xs text-muted">{cur.notified.auto ? 'auto-alert' : 'alert'} · last sent {String(cur.notified.ts).slice(11, 16)} UTC</span>
-                  <div className="flex w-full flex-wrap gap-x-4 gap-y-1">
-                    {(cur.notified.doctors || []).map((d) => (
-                      <span key={d.doctor}><b>{d.doctor}</b>: <span className={(STATUS[d.status] || [])[1]}>{(STATUS[d.status] || [d.status])[0]}</span>{d.ack_ts ? <span className="text-xs text-muted"> {String(d.ack_ts).slice(11, 16)}</span> : ''}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div className="mt-4 grid gap-2">
-                {cur.risks.length ? cur.risks.map((r) => (
-                  <RiskCard key={r.domain} r={r} reasons={b.reasons} onFalse={onFalse} done={cur.verdicts?.some((v) => v.risk === r.domain && v.verdict === 'false_alarm')} />
-                )) : <p className="text-sm text-muted">No active risk for this patient.</p>}
-              </div>
-              <div className="mt-5 mb-1 flex items-center justify-between"><h3 className="text-sm font-bold">Overall criticality during the stay</h3><span className="text-xs text-muted">hover for details</span></div>
-              <Timeline points={stay?.stay_id === cur.stay_id ? stay.timeline : null} />
-            </section>
-          ) : <section className="rounded-xl border border-line bg-panel p-6 text-muted">Select a patient.</section>}
-
-          <section className="rounded-xl border border-line bg-panel p-4">
-            <h3 className="mb-2 text-sm font-bold">False-alarm log <span className="font-normal text-muted">· every entry teaches the model at {b.counter.threshold}</span></h3>
-            {log.length ? (
-              <div className="max-h-56 overflow-auto"><table className="w-full text-left text-xs">
-                <thead className="sticky top-0 bg-panel text-muted"><tr><th className="py-1">Time</th><th>Patient</th><th>Risk</th><th>What it was</th><th>By</th></tr></thead>
-                <tbody>{log.map((l, i) => <tr key={i} className="border-t border-line"><td className="py-1.5 pr-2 whitespace-nowrap text-muted">{l.ts?.slice(5, 16)}</td><td className="pr-2">#{l.stay_id}</td><td className="pr-2">{l.risk_name}</td><td className="pr-2">{l.reason}{l.note ? <span className="text-muted"> – {l.note}</span> : ''}</td><td>{l.staff_role}</td></tr>)}</tbody>
-              </table></div>
-            ) : <p className="text-sm text-muted">No false alarms logged yet.</p>}
-          </section>
+      <section className="mb-4 rounded-xl border border-line bg-panel p-3">
+        <div className="mb-2 flex items-center gap-2">
+          <input className={`${inputCls} max-w-xs py-1.5 text-sm`} placeholder="Search bed, patient # or risk…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <span className="text-xs text-muted">{beds.length} beds · sickest first · click a bed or use the arrow keys</span>
         </div>
-      </div>
-      </>}
+        <div className="grid max-h-[46vh] content-start gap-2 overflow-auto pr-1" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(168px, 1fr))' }}>
+          {beds.map((x) => <BedTile key={x.stay_id} b={x} active={x.stay_id === sel} onOpen={open} />)}
+          {!beds.length && <p className="p-4 text-sm text-muted">No beds match.</p>}
+        </div>
+      </section>
+
+      {cur && (
+        <section ref={detailRef} key={cur.stay_id} className="scroll-mt-16 rounded-xl border border-line bg-panel p-4 anim-fade-up">
+          <div className="flex flex-wrap items-center gap-4">
+            <Gauge value={cur.criticality} level={cur.level} />
+            <div className="flex-1">
+              <div className="text-xs text-muted">Bed {cur.bed} · patient #{cur.stay_id} · hour {num(cur.hour)} in ICU</div>
+              <div className="text-2xl font-black" style={{ color: LEVEL[cur.level]?.color }}>{cur.level}</div>
+              <div className={`text-sm ${tr[1]}`}>{tr[0]} {tr[2]}{cur.change_6h != null ? ` · ${cur.change_6h > 0 ? '+' : ''}${num(cur.change_6h)} in the last 6 h` : ''}</div>
+            </div>
+            <div className="grid justify-items-end gap-1">
+              <button onClick={() => setComposing(true)} disabled={!nmeta} className="flex items-center gap-2 rounded-lg bg-sky-500 px-3 py-2 text-sm font-bold text-white shadow-lg shadow-sky-500/20 transition hover:bg-sky-600">🔔 Notify doctor</button>
+              <span className="text-xs text-muted">{cur.risks.length} active risk{cur.risks.length === 1 ? '' : 's'} · ranked by severity</span>
+            </div>
+          </div>
+          {cur.notified && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 py-2 text-sm">
+              <span>🔔</span><span className={`rounded px-1.5 text-xs font-bold ${URG[cur.notified.urgency]?.cls || ''}`}>{URG[cur.notified.urgency]?.label}</span>
+              <span className="text-xs text-muted">{cur.notified.auto ? 'auto-alert' : 'alert'} · last sent {String(cur.notified.ts).slice(11, 16)} UTC</span>
+              <div className="flex w-full flex-wrap gap-x-4 gap-y-1">
+                {(cur.notified.doctors || []).map((d) => (
+                  <span key={d.doctor}><b>{d.doctor}</b>: <span className={(STATUS[d.status] || [])[1]}>{(STATUS[d.status] || [d.status])[0]}</span>{d.ack_ts ? <span className="text-xs text-muted"> {String(d.ack_ts).slice(11, 16)}</span> : ''}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="mt-4 grid gap-2">
+            {cur.risks.length ? cur.risks.map((r) => (
+              <RiskCard key={r.domain} r={r} reasons={b.reasons} onFalse={onFalse} done={cur.verdicts?.some((v) => v.risk === r.domain && v.verdict === 'false_alarm')} />
+            )) : <p className="text-sm text-muted">No active risk for this patient.</p>}
+          </div>
+          <div className="mt-5 mb-2 flex items-center justify-between"><h3 className="text-sm font-bold">Vital signs</h3><span className="flex items-center gap-1.5 text-xs text-emerald-300"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />live</span></div>
+          <LiveVitals bed={cur} series={stay?.stay_id === cur.stay_id ? stay.vitals : null} />
+          <div className="mt-5 mb-1 flex items-center justify-between"><h3 className="text-sm font-bold">Overall criticality during the stay</h3><span className="text-xs text-muted">hover for details</span></div>
+          <Timeline points={stay?.stay_id === cur.stay_id ? stay.timeline : null} />
+        </section>
+      )}
+
+      <section className="mt-4 rounded-xl border border-line bg-panel p-4">
+        <h3 className="mb-2 text-sm font-bold">False-alarm log <span className="font-normal text-muted">· every entry teaches the model at {b.counter.threshold}</span></h3>
+        {log.length ? (
+          <div className="max-h-56 overflow-auto"><table className="w-full text-left text-xs">
+            <thead className="sticky top-0 bg-panel text-muted"><tr><th className="py-1">Time</th><th>Patient</th><th>Risk</th><th>What it was</th><th>By</th></tr></thead>
+            <tbody>{log.map((l, i) => <tr key={i} className="border-t border-line"><td className="py-1.5 pr-2 whitespace-nowrap text-muted">{l.ts?.slice(5, 16)}</td><td className="pr-2">#{l.stay_id}</td><td className="pr-2">{l.risk_name}</td><td className="pr-2">{l.reason}{l.note ? <span className="text-muted"> – {l.note}</span> : ''}</td><td>{l.staff_role}</td></tr>)}</tbody>
+          </table></div>
+        ) : <p className="text-sm text-muted">No false alarms logged yet.</p>}
+      </section>
       {composing && cur && nmeta && <NotifyPanel bed={cur} meta={nmeta} role={role} onClose={() => setComposing(false)} onSent={(r) => { setComposing(false); show(`Sent to ${r.to.join(' + ')}`); load() }} />}
       <Toast {...(toast || {})} />
     </Shell>

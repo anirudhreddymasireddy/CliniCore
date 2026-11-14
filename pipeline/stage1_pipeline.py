@@ -53,6 +53,18 @@ class Source:
         return df
 
 
+def fetch_df(con, sql):
+    """Small/medium query results over the normal session (fast for small tables). export_to_pandas opens an extra HTTP
+    transfer per call, which costs a fixed delay even for 3 rows - right for millions of rows, wrong for app polling."""
+    st = con.execute(sql)
+    cols = st.columns()
+    df = pd.DataFrame(st.fetchall(), columns=list(cols))
+    for c, t in cols.items():
+        if str(t.get("type", "")).upper() in ("DECIMAL", "DOUBLE"):
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+    return df
+
+
 def write_exasol(con, schema, table, df, replace=False):
     """Write df to schema.table.
     replace=True : result tables (rebuilt on every run) -> CREATE OR REPLACE, so reruns never duplicate rows or hit an old layout.

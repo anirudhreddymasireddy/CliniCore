@@ -1,9 +1,9 @@
-set,risk,standard,horizon_h,rows,events,prevalence,auroc,auprc,auroc_current_tier,auroc_qsofa,auroc_news2,auroc_cr_ratio,auroc_shock_index
-A_validation,sepsis,SIRS / qSOFA / SOFA,6,3630,75,0.0207,0.89,0.4075,0.596,0.574,,,
-B_shifted_hospital,sepsis,SIRS / qSOFA / SOFA,6,14514,285,0.0196,0.882,0.3865,0.579,0.503,,,
-A_validation,arf,ROX index / P-F / NEWS2,6,3463,49,0.0141,0.861,0.1763,0.628,,0.73,,
-B_shifted_hospital,arf,ROX index / P-F / NEWS2,6,13800,359,0.026,0.869,0.3243,0.66,,0.784,,
-A_validation,aki,KDIGO,12,3216,110,0.0342,0.865,0.2332,0.636,,,0.569,
-B_shifted_hospital,aki,KDIGO,12,12269,877,0.0715,0.902,0.3868,0.729,,,0.698,
-A_validation,shock,SCAI-style stage / shock index,6,3586,58,0.0162,0.745,0.0746,0.495,,,,0.801
-B_shifted_hospital,shock,SCAI-style stage / shock index,6,14000,401,0.0286,0.884,0.2527,0.535,,,,0.859
+set,risk,standard,horizon_h,rows,events,prevalence,auroc,auprc,auroc_current_tier,auroc_qsofa,auroc_news2,auroc_cr_ratio,auroc_shock_index,data
+A_validation,sepsis,SIRS / qSOFA / SOFA,6,114438,1476,0.0129,0.807,0.0721,0.598,0.568,,,,PhysioNet 2019 (real)
+B_shifted_hospital,sepsis,SIRS / qSOFA / SOFA,6,227351,1963,0.0086,0.753,0.0334,0.615,0.583,,,,PhysioNet 2019 (real)
+A_validation,arf,ROX index / P-F / NEWS2,6,98998,16581,0.1675,0.848,0.5422,0.568,,0.743,,,PhysioNet 2019 (real)
+B_shifted_hospital,arf,ROX index / P-F / NEWS2,6,217745,16679,0.0766,0.84,0.3344,0.613,,0.788,,,PhysioNet 2019 (real)
+A_validation,aki,KDIGO,12,111842,1542,0.0138,0.924,0.2404,0.606,,,0.606,,PhysioNet 2019 (real)
+B_shifted_hospital,aki,KDIGO,12,222705,2800,0.0126,0.909,0.2214,0.589,,,0.559,,PhysioNet 2019 (real)
+A_validation,shock,SCAI-style stage / shock index,6,111090,3828,0.0345,0.938,0.4579,0.472,,,,0.624,PhysioNet 2019 (real)
+B_shifted_hospital,shock,SCAI-style stage / shock index,6,223230,4292,0.0192,0.939,0.3348,0.501,,,,0.687,PhysioNet 2019 (real)

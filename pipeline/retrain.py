@@ -52,7 +52,7 @@ class Store:
             if self.kind == "csv":
                 f = os.path.join(self.where, f"{name}.csv")
                 return pd.read_csv(f) if os.path.exists(f) else pd.DataFrame()
-            df = self.con.export_to_pandas(f'SELECT * FROM "{self.schema}"."{name}"'); df.columns = [c.lower() for c in df.columns]
+            df = S1.fetch_df(self.con, f'SELECT * FROM "{self.schema}"."{name}"'); df.columns = [c.lower() for c in df.columns]
             # columns Exasol refused (reserved words) were stored as NAME_X by write_exasol: give them their real name back
             return df.rename(columns={c: c[:-2] for c in df.columns if c.endswith("_x") and c[:-2] not in df.columns})
         except Exception:
@@ -314,7 +314,7 @@ def physionet_stage3(a, store):
     publish = None
     if store.kind == "exasol":
         def publish(snap, tl):
-            write_exasol(store.con, store.schema, "ST3_RISKS", snap, replace=True); write_exasol(store.con, store.schema, "ST3_RISK_TIMELINE", tl, replace=True)
+            self_m3 = __import__("stage3_multirisk"); self_m3.write_board_exasol(store.con, store.schema, snap, tl, "results")
     return Stage3(panels=(p[~isB].copy(), H, p[isB].copy(), H), board_stays=set(ids["board_stay_ids"]), publish=publish)
 
 

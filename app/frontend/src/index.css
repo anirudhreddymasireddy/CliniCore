@@ -31,6 +31,11 @@ button { touch-action: manipulation; }
 .anim-slide-in { animation: slide-in 520ms cubic-bezier(0.22, 1, 0.36, 1) both; }
 .anim-fade-up { animation: fade-up 380ms ease-out both; }
 .anim-soft-pulse { animation: soft-pulse 2.8s ease-in-out infinite; }
+/* bed tiles: same glow, but animated with opacity on its own layer (no repaint of the tile on every frame) */
+.tile-pulse { position: relative; }
+.tile-pulse::after { content: ''; position: absolute; inset: -4px; border-radius: 12px; pointer-events: none;
+  box-shadow: 0 0 0 4px rgba(246, 83, 83, 0.28); opacity: 0; will-change: opacity; animation: tile-glow 2.8s ease-in-out infinite; }
+@keyframes tile-glow { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
-  .anim-slide-in, .anim-fade-up, .anim-soft-pulse { animation: none; }
+  .anim-slide-in, .anim-fade-up, .anim-soft-pulse, .tile-pulse::after { animation: none; }
 }

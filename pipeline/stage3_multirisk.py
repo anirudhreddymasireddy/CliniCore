@@ -239,7 +239,8 @@ def board(df, thr, out):
                          trend_6h=df.at[i, "crit_trend"], change_6h=df.at[i, "crit_change_6h"], n_risks=len(items),
                          risk_1=txt[0], risk_2=txt[1], risk_3=txt[2], backend_1=bk[0], backend_2=bk[1], backend_3=bk[2],
                          domain_1=(items[0][0] if len(items) > 0 else ""), domain_2=(items[1][0] if len(items) > 1 else ""), domain_3=(items[2][0] if len(items) > 2 else ""),
-                         tier_1=(items[0][1] if len(items) > 0 else 0), tier_2=(items[1][1] if len(items) > 1 else 0), tier_3=(items[2][1] if len(items) > 2 else 0)))
+                         tier_1=(items[0][1] if len(items) > 0 else 0), tier_2=(items[1][1] if len(items) > 1 else 0), tier_3=(items[2][1] if len(items) > 2 else 0),
+                         **{f"v_{c}": (round(float(df.at[i, c]), 2) if c in df and pd.notna(df.at[i, c]) else None) for c in ["hr", "spo2", "sbp", "dbp", "rr", "temp_c"]}))
     snap = pd.DataFrame(snap).sort_values("criticality", ascending=False).reset_index(drop=True)   # ICU board order: sickest first
     snap.to_csv(os.path.join(out, "stage3_risks_snapshot.csv"), index=False)
     # timeline: only hours where the top risk or its tier changes (keeps the dashboard table small)
@@ -247,7 +248,27 @@ def board(df, thr, out):
     tl = df[chg & (df.top_tier >= 1)][["stay_id", "hour", "hour_idx", "top_domain", "top_tier", "criticality", "crit_level"]].copy()
     tl["hour"] = tl.hour.astype(str); tl["top_tier_name"] = tl.top_tier.map(dict(enumerate(R.TIER_NAMES)))
     tl.to_csv(os.path.join(out, "stage3_risk_timeline.csv"), index=False)
+    vitals_table(df).to_csv(os.path.join(out, "stage3_vitals.csv"), index=False)
     return df, snap, tl
+
+
+VITAL_COLS = ["hr", "spo2", "sbp", "dbp", "map", "rr", "temp_c", "fio2", "lactate"]
+
+
+def vitals_table(df, hours=48):
+    """Last `hours` hourly values per stay (forward-filled as the panel shows them) for the live vital-sign view."""
+    keep = df[df.groupby("stay_id").hour_idx.transform("max") - df.hour_idx < hours]
+    cols = [c for c in VITAL_COLS if c in keep]
+    return keep[["stay_id", "hour_idx"] + cols].round(2)
+
+
+def write_board_exasol(con, schema, snap, tl, out):
+    """Board tables in Exasol (same files as the CSV board)."""
+    write_exasol(con, schema, "ST3_RISKS", snap, replace=True)
+    write_exasol(con, schema, "ST3_RISK_TIMELINE", tl, replace=True)
+    f = os.path.join(out, "stage3_vitals.csv")
+    if os.path.exists(f):
+        write_exasol(con, schema, "ST3_VITALS", pd.read_csv(f), replace=True)
 
 
 def main():
@@ -320,8 +341,7 @@ def main():
     if a.source == "exasol" and A.con is not None:
         print("[5/5] writing results to Exasol...", flush=True)
         write_exasol(A.con, a.out_schema, "ST3_RISK_METRICS", met, replace=True)
-        write_exasol(A.con, a.out_schema, "ST3_RISKS", snap, replace=True)
-        write_exasol(A.con, a.out_schema, "ST3_RISK_TIMELINE", tl, replace=True)
+        write_board_exasol(A.con, a.out_schema, snap, tl, a.out)
         write_exasol(A.con, a.out_schema, "ST3_SOURCE", pd.DataFrame([src]), replace=True)
         print(f"written to Exasol schema {a.out_schema}: ST3_RISK_METRICS, ST3_RISKS, ST3_RISK_TIMELINE")
 

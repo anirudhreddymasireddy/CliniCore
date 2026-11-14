@@ -27,3 +27,6 @@ app/frontend/node_modules/
 *.zip
 .env
 .DS_Store
+cloudflared
+app.log
+tunnel.log

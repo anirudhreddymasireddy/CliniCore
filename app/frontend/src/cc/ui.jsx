@@ -27,7 +27,6 @@ export function Shell({ title, subtitle, children, right }) {
         </nav>
         <div className="ml-auto flex shrink-0 items-center gap-4">{right}<InboxBell /></div>
       </header>
-      <div className="border-b border-amber-300/20 bg-amber-300/10 px-5 py-1 text-xs text-amber-200">Clinical decision support – not a diagnosis. Staff always decide.</div>
       <main className="mx-auto w-full max-w-[1600px] flex-1 p-5">
         {title && <div className="mb-4"><h1 className="text-2xl font-black">{title}</h1>{subtitle && <p className="text-sm text-muted">{subtitle}</p>}</div>}
         {children}

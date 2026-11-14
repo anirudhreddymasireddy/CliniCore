@@ -42,6 +42,40 @@ app = FastAPI(title="CliniCore", version="1.0")
 import clinicore_api  # noqa: E402
 app.include_router(clinicore_api.router)
 
+import time as _time  # noqa: E402
+import base64 as _b64, hmac as _hmac  # noqa: E402
+from fastapi.responses import Response as _Resp  # noqa: E402
+
+_PW = os.environ.get("CLINICORE_PASSWORD", "")               # set it on any public deployment; empty = no login (local use)
+
+
+@app.middleware("http")
+async def _shared_password(request, call_next):
+    """Optional shared password (browser login box). User name: anything; password: CLINICORE_PASSWORD."""
+    if not _PW:
+        return await call_next(request)
+    auth = request.headers.get("authorization", "")
+    if auth.startswith("Basic "):
+        try:
+            given = _b64.b64decode(auth[6:]).decode("utf-8", "ignore").split(":", 1)[-1]
+            if _hmac.compare_digest(given, _PW):
+                return await call_next(request)
+        except Exception:
+            pass
+    return _Resp("CliniCore - login required", status_code=401, headers={"WWW-Authenticate": 'Basic realm="CliniCore", charset="UTF-8"'})
+
+
+
+@app.middleware("http")
+async def _log_slow(request, call_next):
+    """Prints every API call slower than 300 ms in the app window (for finding lag)."""
+    t0 = _time.perf_counter()
+    response = await call_next(request)
+    ms = (_time.perf_counter() - t0) * 1000
+    if ms > 300 and request.url.path.startswith("/api"):
+        print(f"SLOW {ms:6.0f} ms  {request.method} {request.url.path}", flush=True)
+    return response
+
 
 def _call(fn, *args):
     try:

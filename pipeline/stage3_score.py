@@ -34,8 +34,7 @@ def main():
     info = dict(data=a.label, label=f"{a.label} · scored {stamp}", patients_on_board=int(len(snap)), models_trained_on=H.get("trained_on", ""))
     json.dump(info, open(os.path.join(a.out, "stage3_source.json"), "w"), indent=1)
     if a.source == "exasol":
-        write_exasol(src.con, a.out_schema, "ST3_RISKS", snap, replace=True)
-        write_exasol(src.con, a.out_schema, "ST3_RISK_TIMELINE", tl, replace=True)
+        M.write_board_exasol(src.con, a.out_schema, snap, tl, a.out)
         write_exasol(src.con, a.out_schema, "ST3_SOURCE", pd.DataFrame([info]), replace=True)
     print(f"scored {len(snap)} ICU stays in {time.time()-t0:.0f}s; levels {snap.risk_level.value_counts().to_dict()}")
 
